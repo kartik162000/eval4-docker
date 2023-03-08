@@ -1,0 +1,100 @@
+version: "3"
+services:
+  redis:
+    image: redis
+    restart: always
+    ports:
+      - "6380:6379"
+  migration:
+    build:
+      context: ../AuthService
+      dockerfile: Dockerfile.migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: auth
+      DB_PORT: 5432
+      NODE_ENV: docker
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: auth
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../AuthService/database/data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  server:
+    build:
+      context: ../AuthService
+      args:
+        - no_cache=1
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: auth
+      DB_PORT: 5432
+      NODE_ENV: docker
+  backendmigration:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.migrations
+    depends_on:
+      backenddb:
+        condition: service_healthy
+    environment:
+      DB_BACKEND_HOST: backenddb
+      DB_BACKEND_USER: postgres
+      DB_BACKEND_PASSWORD: postgres
+      DB_BACKEND_NAME: postgres
+      DB_BACKEND_PORT: 5432
+      NODE_ENV: docker
+  backenddb:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - ../backend/database/data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  backendserver:
+    build:
+      context: ../backend
+      args:
+        - no_cache=1
+    depends_on:
+      - backenddb
+    ports:
+      - "4000:4000"
+    environment:
+      DB_BACKEND_HOST: backenddb
+      DB_BACKEND_USER: postgres
+      DB_BACKEND_PASSWORD: postgres
+      DB_BACKEND_NAME: postgres
+      DB_BACKEND_PORT: 5432
+      NODE_ENV: docker
